@@ -1,0 +1,101 @@
+/* Minnesota Park & Campsite Explorer - Custom Styles */
+:root {
+  --mn-pine: #14532d;
+  --mn-forest: #166534;
+  --mn-moss: #15803d;
+  --mn-lake: #0369a1;
+  --mn-gold: #d97706;
+}
+
+html, body {
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+}
+
+/* Custom scrollbar for sidebar & detail drawer */
+.custom-scroll::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.custom-scroll::-webkit-scrollbar-track {
+  background: #f1f5f9;
+}
+.custom-scroll::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 3px;
+}
+.custom-scroll::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
+}
+
+/* Map container full height */
+#map-canvas {
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+/* Leaflet MarkerCluster customization to match MN Northwoods theme */
+.marker-cluster-small {
+  background-color: rgba(22, 101, 52, 0.25) !important;
+}
+.marker-cluster-small div {
+  background-color: rgba(22, 101, 52, 0.88) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 12px !important;
+}
+
+.marker-cluster-medium {
+  background-color: rgba(3, 105, 161, 0.25) !important;
+}
+.marker-cluster-medium div {
+  background-color: rgba(3, 105, 161, 0.9) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+.marker-cluster-large {
+  background-color: rgba(180, 83, 9, 0.25) !important;
+}
+.marker-cluster-large div {
+  background-color: rgba(180, 83, 9, 0.92) !important;
+  color: #ffffff !important;
+  font-weight: 700 !important;
+  font-size: 13px !important;
+}
+
+/* Custom campsite pin markers */
+.mn-pin-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 2px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.35);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 11px;
+  transition: transform 0.15s ease;
+}
+.mn-pin-marker:hover {
+  transform: scale(1.2);
+  z-index: 1000 !important;
+}
+
+.mn-park-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  background: linear-gradient(135deg, #14532d 0%, #15803d 100%);
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-weight: 700;
+  font-size: 12px;
+}

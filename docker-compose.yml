@@ -1,0 +1,39 @@
+services:
+  mncampsiteapp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mn-campsite-explorer
+    ports:
+      - "${APP_PORT:-8000}:8000"
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      - APP_NAME=${APP_NAME:-Minnesota Park & Campsite Explorer}
+      - APP_ENV=${APP_ENV:-production}
+      - SESSION_SECRET_KEY=${SESSION_SECRET_KEY:-mn-campsite-dev-secret-key-change-in-prod}
+      - GOOGLE_SHEET_ID=${GOOGLE_SHEET_ID:-1CW-0euFLFz24nzcXNrTY24IoqTX9BCHLX5fdLjxAHgk}
+      - GOOGLE_SHEET_GID=${GOOGLE_SHEET_GID:-459530859}
+      - GOOGLE_SHEETS_API_KEY=${GOOGLE_SHEETS_API_KEY:-}
+      - SHEET_CACHE_TTL_SECONDS=${SHEET_CACHE_TTL_SECONDS:-1800}
+      - GOOGLE_MAPS_API_KEY=${GOOGLE_MAPS_API_KEY:-}
+      - GOOGLE_MAPS_MAP_ID=${GOOGLE_MAPS_MAP_ID:-DEMO_MAP_ID}
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID:-}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET:-}
+      - GOOGLE_REDIRECT_URI=${GOOGLE_REDIRECT_URI:-http://localhost:8000/auth/callback}
+      - ENABLE_DEMO_AUTH=${ENABLE_DEMO_AUTH:-true}
+      - DATABASE_PATH=/app/data/app.db
+    volumes:
+      - mn_campsite_data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+volumes:
+  mn_campsite_data:
+    driver: local

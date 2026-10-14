@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ app_name }}</title>
+
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+
+  <!-- Leaflet & MarkerCluster (Used as automatic fallback if GOOGLE_MAPS_API_KEY is not yet configured) -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+  <!-- Custom App Styles -->
+  <link rel="stylesheet" href="/static/css/styles.css" />
+
+  {% if google_client_id %}
+  <!-- Google Identity Services (Federated Google IdP One-Tap / Button) -->
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  {% endif %}
+</head>
+<body class="bg-slate-50 text-slate-900 flex flex-col h-screen overflow-hidden">
+
+  <!-- ======================= TOP NAVIGATION BAR ======================= -->
+  <header class="bg-emerald-950 text-white border-b border-emerald-800 px-4 py-2.5 flex items-center justify-between shrink-0 z-30 shadow-md">
+    <div class="flex items-center gap-3">
+      <!-- Mobile sidebar toggle -->
+      <button id="btn-toggle-sidebar" class="lg:hidden p-1.5 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-100" title="Toggle Filters">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+
+      <!-- Brand Icon & Title -->
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-xl bg-emerald-700/80 border border-emerald-500/40 flex items-center justify-center shadow-inner">
+          <svg class="w-5 h-5 text-emerald-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 20h18L12 4 3 20zm9-5v5"/>
+          </svg>
+        </div>
+        <div>
+          <h1 class="font-bold text-sm sm:text-base tracking-tight leading-tight flex items-center gap-2">
+            <span>Minnesota Park &amp; Campsite Explorer</span>
+            <span class="hidden md:inline-flex items-center px-2 py-0.5 rounded-full text-[11px] font-medium bg-emerald-800/90 text-emerald-200 border border-emerald-700">
+              Google Sheets Live
+            </span>
+          </h1>
+          <p class="text-[11px] text-emerald-300/90 hidden sm:block">
+            <span id="stat-total-sites">{{ metadata.total_campsites }}</span> campsites across
+            <span id="stat-total-parks">{{ metadata.total_parks }}</span> Minnesota parks &amp; forests
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Center / Right Controls -->
+    <div class="flex items-center gap-2 sm:gap-3">
+      <!-- Source Google Sheet Link -->
+      <a href="{{ metadata.sheet_url }}" target="_blank" rel="noopener noreferrer"
+         class="hidden xl:inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-700/70 transition">
+        <svg class="w-3.5 h-3.5 text-emerald-300" fill="currentColor" viewBox="0 0 24 24">
+          <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-8 14H7v-2h4v2zm0-4H7v-2h4v2zm0-4H7V7h4v2zm6 8h-4v-2h4v2zm0-4h-4v-2h4v2zm0-4h-4V7h4v2z"/>
+        </svg>
+        <span>Source Google Sheet</span>
+      </a>
+
+      <!-- Map Engine Status / API Key Modal Button -->
+      <button id="btn-map-settings"
+              class="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium bg-emerald-900/80 hover:bg-emerald-800 text-emerald-100 border border-emerald-700/70 transition"
+              title="Configure or inspect Google Maps JS API Key">
+        <span id="map-engine-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+        <span id="map-engine-label" class="hidden sm:inline">Map Settings</span>
+      </button>
+
+      <!-- Federated Google IdP Auth Section -->
+      <div id="auth-container" class="flex items-center gap-2">
+        {% if user %}
+        <div class="flex items-center gap-2 bg-emerald-900/90 border border-emerald-700/80 rounded-full pl-2 pr-2.5 py-1">
+          {% if user.picture %}
+          <img src="{{ user.picture }}" alt="{{ user.name }}" class="w-6 h-6 rounded-full border border-emerald-400" />
+          {% else %}
+          <div class="w-6 h-6 rounded-full bg-amber-500 text-slate-950 font-bold text-xs flex items-center justify-center">
+            {{ user.name[:1] | upper }}
+          </div>
+          {% endif %}
+          <div class="hidden md:block text-left leading-tight">
+            <div class="text-xs font-semibold text-white truncate max-w-[140px]">{{ user.name }}</div>
+            <div class="text-[10px] text-emerald-300 truncate max-w-[140px]">{{ user.email }}</div>
+          </div>
+          <button id="btn-sync-sheet"
+                  class="ml-1 px-2 py-1 rounded-md bg-emerald-700 hover:bg-emerald-600 text-[11px] font-medium text-white transition flex items-center gap-1"
+                  title="Re-sync latest data from Google Sheets">
+            <svg id="sync-icon" class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+            </svg>
+            <span class="hidden sm:inline">Sync</span>
+          </button>
+          <a href="/auth/logout"
+             class="ml-0.5 px-2 py-1 rounded-md bg-emerald-950/80 hover:bg-red-900/80 text-[11px] text-emerald-200 hover:text-white transition"
+             title="Sign out">
+            Sign out
+          </a>
+        </div>
+        {% else %}
+        <button id="btn-open-login"
+                class="inline-flex items-center gap-2 bg-white hover:bg-slate-100 text-slate-800 font-semibold text-xs px-3.5 py-1.5 rounded-lg shadow-sm border border-slate-200 transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
+            <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.8C3.5 21.4 7.4 24 12 24z"/>
+          </svg>
+          <span>Sign in with Google</span>
+        </button>
+        {% endif %}
+      </div>
+    </div>
+  </header>
+
+  <!-- ======================= MAIN WORKSPACE ======================= -->
+  <div class="flex-1 flex overflow-hidden relative">
+
+    <!-- ======================= LEFT SIDEBAR (FILTERS & LIST) ======================= -->
+    <aside id="sidebar-panel"
+           class="w-full sm:w-96 lg:w-[410px] bg-white border-r border-slate-200 flex flex-col shrink-0 z-20 absolute lg:static inset-y-0 left-0 transform transition-transform duration-200 ease-in-out">
+
+      <!-- Search & View Mode Header -->
+      <div class="p-3.5 border-b border-slate-200 bg-slate-50/70 space-y-2.5">
+        <!-- Search bar -->
+        <div class="relative">
+          <svg class="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+          </svg>
+          <input id="filter-search" type="text"
+                 placeholder="Search park, campground, site #, county..."
+                 class="w-full pl-9 pr-8 py-2 text-xs sm:text-sm bg-white border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-600 focus:border-emerald-600" />
+          <button id="btn-clear-search" class="hidden absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
+            &times;
+          </button>
+        </div>
+
+        <!-- Map Display Mode Toggle (Campsite Pins vs Park Summary Bubbles) -->
+        <div class="grid grid-cols-2 gap-1 p-1 bg-slate-200/80 rounded-lg text-xs font-medium">
+          <button id="mode-campsites" class="py-1.5 px-2 rounded-md bg-white text-emerald-900 shadow-sm font-semibold transition">
+            Campsites (<span id="count-filtered-sites">{{ metadata.total_campsites }}</span>)
+          </button>
+          <button id="mode-parks" class="py-1.5 px-2 rounded-md text-slate-600 hover:text-slate-900 transition">
+            Parks Overview ({{ metadata.total_parks }})
+          </button>
+        </div>
+
+        <!-- Quick Amenity Chips -->
+        <div class="flex flex-wrap gap-1.5 pt-0.5">
+          <button data-chip="electric" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition">
+            ⚡ Electric
+          </button>
+          <button data-chip="waterfront" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition">
+            🌊 Waterfront
+          </button>
+          <button data-chip="ada_accessible" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition">
+            ♿ ADA
+          </button>
+          <button data-chip="pets_allowed" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition">
+            🐾 Pets OK
+          </button>
+          <button data-chip="food_locker" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-slate-300 bg-white text-slate-700 hover:bg-slate-100 transition">
+            🐻 Food Locker
+          </button>
+          <button data-chip="favorites_only" id="chip-favorites" class="quick-chip px-2.5 py-1 rounded-full text-xs font-medium border border-amber-300 bg-amber-50/60 text-amber-900 hover:bg-amber-100 transition">
+            ★ Saved (<span id="fav-count">0</span>)
+          </button>
+        </div>
+      </div>
+
+      <!-- Sidebar Sub-Tabs: Filters vs Results List -->
+      <div class="flex border-b border-slate-200 bg-white text-xs font-semibold text-slate-600 shrink-0">
+        <button id="tab-btn-filters" class="flex-1 py-2.5 border-b-2 border-emerald-700 text-emerald-800 bg-emerald-50/40">
+          Filter Criteria
+        </button>
+        <button id="tab-btn-results" class="flex-1 py-2.5 border-b-2 border-transparent hover:text-slate-900">
+          Browse List (<span id="tab-results-count">{{ metadata.total_campsites }}</span>)
+        </button>
+      </div>
+
+      <!-- TAB 1: FILTER CONTROLS -->
+      <div id="tab-panel-filters" class="flex-1 overflow-y-auto custom-scroll p-4 space-y-3.5">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-400">Location &amp; Park</span>
+          <button id="btn-reset-filters" class="text-xs font-medium text-emerald-700 hover:text-emerald-900 hover:underline">
+            Reset All Filters
+          </button>
+        </div>
+
+        <!-- Tourism Region -->
+        <div>
+          <label for="filter-region" class="block text-xs font-medium text-slate-700 mb-1">Tourism Region</label>
+          <select id="filter-region" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Minnesota Regions</option>
+            {% for r in metadata.facets.tourism_regions %}
+            <option value="{{ r }}">{{ r }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Park Type -->
+        <div>
+          <label for="filter-park-type" class="block text-xs font-medium text-slate-700 mb-1">Park System Type</label>
+          <select id="filter-park-type" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Park Types</option>
+            {% for pt in metadata.facets.park_types %}
+            <option value="{{ pt }}">{{ pt }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Specific Park -->
+        <div>
+          <label for="filter-park" class="block text-xs font-medium text-slate-700 mb-1">Park or Forest ({{ metadata.total_parks }})</label>
+          <select id="filter-park" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Parks &amp; State Forests</option>
+            {% for p in metadata.facets.parks %}
+            <option value="{{ p }}">{{ p }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- County -->
+        <div>
+          <label for="filter-county" class="block text-xs font-medium text-slate-700 mb-1">County ({{ metadata.total_counties }})</label>
+          <select id="filter-county" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Counties</option>
+            {% for c in metadata.facets.counties %}
+            <option value="{{ c }}">{{ c }} County</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <hr class="border-slate-200" />
+        <div class="text-xs font-semibold uppercase tracking-wider text-slate-400">Site &amp; Unit Attributes</div>
+
+        <!-- Unit Type -->
+        <div>
+          <label for="filter-unit-type" class="block text-xs font-medium text-slate-700 mb-1">Unit Type</label>
+          <select id="filter-unit-type" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Unit Types</option>
+            {% for ut in metadata.facets.unit_types %}
+            <option value="{{ ut }}">{{ ut }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Site Type -->
+        <div>
+          <label for="filter-site-type" class="block text-xs font-medium text-slate-700 mb-1">Site Access / Type</label>
+          <select id="filter-site-type" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+            <option value="">All Site Access Types</option>
+            {% for st in metadata.facets.site_types %}
+            <option value="{{ st }}">{{ st }}</option>
+            {% endfor %}
+          </select>
+        </div>
+
+        <!-- Shade -->
+        <div class="grid grid-cols-2 gap-2.5">
+          <div>
+            <label for="filter-shade" class="block text-xs font-medium text-slate-700 mb-1">Tree Shade</label>
+            <select id="filter-shade" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+              <option value="">Any Shade</option>
+              {% for sh in metadata.facets.shade_options %}
+              <option value="{{ sh }}">{{ sh }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="filter-50amp" class="block text-xs font-medium text-slate-700 mb-1">50-Amp Hookup</label>
+            <select id="filter-50amp" class="w-full text-xs sm:text-sm border border-slate-300 rounded-lg px-2.5 py-2 bg-white focus:ring-2 focus:ring-emerald-600">
+              <option value="">Any Hookup</option>
+              <option value="true">50-Amp Required</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Sliders: Min Pad Length & Min People -->
+        <div class="space-y-3 pt-1">
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label for="filter-pad-length" class="font-medium text-slate-700">Min RV / Pad Length</label>
+              <span id="label-pad-length" class="font-semibold text-emerald-700">Any</span>
+            </div>
+            <input id="filter-pad-length" type="range" min="0" max="100" step="5" value="0"
+                   class="w-full accent-emerald-700 cursor-pointer" />
+          </div>
+
+          <div>
+            <div class="flex justify-between text-xs mb-1">
+              <label for="filter-min-people" class="font-medium text-slate-700">Min Party Capacity</label>
+              <span id="label-min-people" class="font-semibold text-emerald-700">Any</span>
+            </div>
+            <input id="filter-min-people" type="range" min="0" max="60" step="2" value="0"
+                   class="w-full accent-emerald-700 cursor-pointer" />
+          </div>
+        </div>
+
+        <!-- Dataset Info Card -->
+        <div class="p-3 rounded-xl bg-slate-100 border border-slate-200/80 text-[11px] text-slate-600 space-y-1">
+          <div class="font-semibold text-slate-800 flex items-center justify-between">
+            <span>Google Sheets Sync Status</span>
+            <span id="meta-source-badge" class="px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 font-medium">{{ metadata.source }}</span>
+          </div>
+          <div>Last synced: <span id="meta-last-synced" class="font-medium">{{ metadata.last_synced_at }}</span></div>
+          <div>Sheet ID: <code class="text-[10px] bg-white px-1 py-0.5 rounded border">{{ metadata.sheet_id[:18] }}...</code></div>
+        </div>
+      </div>
+
+      <!-- TAB 2: RESULTS LIST -->
+      <div id="tab-panel-results" class="hidden flex-1 overflow-y-auto custom-scroll divide-y divide-slate-100">
+        <div id="results-list-container" class="divide-y divide-slate-100"></div>
+      </div>
+    </aside>
+
+    <!-- ======================= INTERACTIVE MAP CONTAINER ======================= -->
+    <main class="flex-1 relative bg-slate-200 overflow-hidden">
+      <!-- Map Surface -->
+      <div id="map-canvas"></div>
+
+      <!-- Loading Overlay -->
+      <div id="map-loading-overlay" class="hidden absolute inset-0 bg-slate-900/30 backdrop-blur-[1px] z-20 flex items-center justify-center">
+        <div class="bg-white px-4 py-3 rounded-xl shadow-lg border border-slate-200 flex items-center gap-3 text-sm font-medium text-slate-800">
+          <svg class="w-5 h-5 text-emerald-700 animate-spin" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>Updating Minnesota campsites on map...</span>
+        </div>
+      </div>
+
+      <!-- Floating Top-Right Map Controls -->
+      <div class="absolute top-3 right-3 z-10 flex flex-col gap-2">
+        <button id="btn-reset-bounds"
+                class="bg-white hover:bg-slate-50 text-slate-800 text-xs font-semibold px-3 py-2 rounded-lg shadow-md border border-slate-200 flex items-center gap-1.5 transition"
+                title="Zoom to fit visible Minnesota campsites">
+          <svg class="w-4 h-4 text-emerald-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4"/>
+          </svg>
+          <span>Fit Minnesota View</span>
+        </button>
+      </div>
+
+      <!-- Floating Bottom-Left Legend -->
+      <div class="absolute bottom-4 left-4 z-10 bg-white/95 backdrop-blur-sm px-3.5 py-2.5 rounded-xl shadow-lg border border-slate-200/90 text-xs space-y-1.5 max-w-xs">
+        <div class="font-bold text-slate-800 text-[11px] uppercase tracking-wider">Campsite Pin Legend</div>
+        <div class="grid grid-cols-2 gap-x-3 gap-y-1 text-[11px] text-slate-700">
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-amber-600 inline-block border border-white shadow-sm"></span>
+            <span>Electric Hookup</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-emerald-700 inline-block border border-white shadow-sm"></span>
+            <span>Drive-In Standard</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-sky-600 inline-block border border-white shadow-sm"></span>
+            <span>Waterfront / Boat</span>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <span class="w-3 h-3 rounded-full bg-purple-700 inline-block border border-white shadow-sm"></span>
+            <span>Backpack / Walk-In</span>
+          </div>
+          <div class="flex items-center gap-1.5 col-span-2">
+            <span class="w-3 h-3 rounded-full bg-rose-600 inline-block border border-white shadow-sm"></span>
+            <span>Tipi / Wall Tent / Group Camp</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- ======================= CAMPSITE DETAIL SLIDE-OVER DRAWER ======================= -->
+      <div id="site-detail-drawer"
+           class="hidden absolute top-0 right-0 bottom-0 w-full sm:w-[430px] bg-white shadow-2xl border-l border-slate-200 z-30 flex flex-col">
+        <!-- Drawer Header -->
+        <div class="bg-emerald-950 text-white p-4 flex items-start justify-between gap-3 shrink-0">
+          <div>
+            <div class="flex items-center gap-1.5 text-[11px] font-medium text-emerald-300 uppercase tracking-wider">
+              <span id="detail-park-type">State Park</span>
+              <span>&bull;</span>
+              <span id="detail-region">Region</span>
+              <span>&bull;</span>
+              <span id="detail-county">County</span>
+            </div>
+            <h2 id="detail-title" class="text-base sm:text-lg font-bold leading-snug mt-0.5">Park &amp; Site</h2>
+            <p id="detail-subtitle" class="text-xs text-emerald-200 mt-0.5">Campground</p>
+          </div>
+          <div class="flex items-center gap-1.5">
+            <button id="btn-favorite-site"
+                    class="p-2 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-200 transition"
+                    title="Save to Favorites">
+              <svg id="icon-favorite-star" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z"/>
+              </svg>
+            </button>
+            <button id="btn-close-drawer" class="p-2 rounded-lg bg-emerald-900 hover:bg-emerald-800 text-emerald-200" title="Close">
+              <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Drawer Scrollable Body -->
+        <div class="flex-1 overflow-y-auto custom-scroll p-4 space-y-4 text-xs sm:text-sm">
+          <!-- Key Feature Badges -->
+          <div id="detail-badges" class="flex flex-wrap gap-1.5"></div>
+
+          <!-- Action Links (Google Maps Directions, Street View, Filter Park) -->
+          <div class="grid grid-cols-2 gap-2">
+            <a id="link-gmaps-directions" href="#" target="_blank" rel="noopener noreferrer"
+               class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white font-semibold text-xs shadow-sm transition">
+              <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+              </svg>
+              <span>Open in Google Maps</span>
+            </a>
+            <button id="btn-filter-this-park"
+                    class="flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-800 font-semibold text-xs border border-slate-300 transition">
+              <span>All Sites in Park</span>
+            </button>
+          </div>
+
+          <!-- Site Specifications Grid -->
+          <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Campsite Specifications</h3>
+            <div id="detail-specs-grid" class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs"></div>
+          </div>
+
+          <!-- Pad & Hookup Details -->
+          <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Pad, RV &amp; Tent Surface</h3>
+            <div id="detail-pad-grid" class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs"></div>
+          </div>
+
+          <!-- Proximity / Distances to Facilities -->
+          <div class="bg-slate-50 rounded-xl p-3.5 border border-slate-200/80 space-y-2">
+            <h3 class="text-xs font-bold uppercase tracking-wider text-slate-500">Walking Distance to Amenities</h3>
+            <div id="detail-distances-grid" class="grid grid-cols-2 gap-x-4 gap-y-2 text-xs"></div>
+          </div>
+
+          <!-- Personal Trip Notes (Federated Google IdP Feature) -->
+          <div class="bg-amber-50/70 rounded-xl p-3.5 border border-amber-200 space-y-2.5">
+            <div class="flex items-center justify-between">
+              <h3 class="text-xs font-bold uppercase tracking-wider text-amber-900 flex items-center gap-1.5">
+                <span>Personal Trip Notes &amp; Rating</span>
+              </h3>
+              <span class="text-[11px] text-amber-700 font-medium">Google Account Sync</span>
+            </div>
+
+            <div id="note-auth-prompt" class="{% if user %}hidden{% endif %} text-xs text-amber-900 bg-white/80 p-2.5 rounded-lg border border-amber-200">
+              Sign in with your Google account to save personal campsite ratings, packing notes, and favorite sites.
+            </div>
+
+            <div id="note-editor-box" class="{% if not user %}hidden{% endif %} space-y-2">
+              <div class="flex items-center gap-2">
+                <label for="note-rating" class="text-xs font-medium text-slate-700">My Rating:</label>
+                <select id="note-rating" class="text-xs border border-amber-300 rounded-md px-2 py-1 bg-white">
+                  <option value="">No rating</option>
+                  <option value="5">★★★★★ (5 - Best Site)</option>
+                  <option value="4">★★★★☆ (4 - Great)</option>
+                  <option value="3">★★★☆☆ (3 - Good)</option>
+                  <option value="2">★★☆☆☆ (2 - Fair)</option>
+                  <option value="1">★☆☆☆☆ (1 - Avoid)</option>
+                </select>
+              </div>
+              <textarea id="note-textarea" rows="3"
+                        placeholder="Add personal notes about shade, hammock trees, pad levelness, or cell reception..."
+                        class="w-full text-xs border border-amber-300 rounded-lg p-2 bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"></textarea>
+              <div class="flex items-center justify-between">
+                <span id="note-save-status" class="text-[11px] text-emerald-700 font-medium"></span>
+                <button id="btn-save-note"
+                        class="px-3 py-1.5 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-semibold text-xs transition">
+                  Save Note
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </main>
+  </div>
+
+  <!-- ======================= GOOGLE IDP LOGIN & MAP SETTINGS MODAL ======================= -->
+  <div id="modal-backdrop" class="hidden fixed inset-0 bg-slate-950/60 backdrop-blur-xs z-50 flex items-center justify-center p-4">
+    <div class="bg-white rounded-2xl max-w-md w-full shadow-2xl border border-slate-200 overflow-hidden">
+      <div class="bg-emerald-950 text-white px-5 py-4 flex items-center justify-between">
+        <h3 id="modal-title" class="font-bold text-base">Sign in with Google IdP</h3>
+        <button id="btn-close-modal" class="text-emerald-200 hover:text-white text-xl leading-none">&times;</button>
+      </div>
+
+      <!-- Login Modal Content -->
+      <div id="modal-body-login" class="p-5 space-y-4 text-sm">
+        <p class="text-slate-600 text-xs leading-relaxed">
+          Authenticate with your federated <strong>Google Identity Provider (OAuth 2.0 / OIDC)</strong> account to save favorite Minnesota campsites, record personal site notes, and trigger live Google Sheet refreshes.
+        </p>
+
+        {% if google_client_id %}
+        <!-- Google Identity Services Sign-In Button -->
+        <div class="flex justify-center py-2">
+          <div id="g_id_onload"
+               data-client_id="{{ google_client_id }}"
+               data-context="signin"
+               data-ux_mode="popup"
+               data-callback="handleGoogleCredentialResponse"
+               data-auto_prompt="false">
+          </div>
+          <div class="g_id_signin"
+               data-type="standard"
+               data-shape="rectangular"
+               data-theme="outline"
+               data-text="signin_with"
+               data-size="large"
+               data-logo_alignment="left">
+          </div>
+        </div>
+        {% endif %}
+
+        <!-- OAuth 2.0 Authorization Code Redirect Flow -->
+        <a href="/auth/login"
+           class="w-full flex items-center justify-center gap-2.5 py-2.5 px-4 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs shadow transition">
+          <svg class="w-4 h-4" viewBox="0 0 24 24">
+            <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.7l3.1-3.1C17.3 1.8 14.8 1 12 1 7.4 1 3.5 3.6 1.6 7.4l3.7 2.8C6.2 7.2 8.9 5 12 5z"/>
+            <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.6l3.7 2.9c2.2-2 3.7-5 3.7-8.7z"/>
+            <path fill="#FBBC05" d="M5.3 14.8c-.2-.8-.4-1.6-.4-2.5s.2-1.7.4-2.5L1.6 7C.6 9 0 11.2 0 13.5s.6 4.5 1.6 6.5l3.7-2.9z"/>
+            <path fill="#34A853" d="M12 24c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3.1 0-5.8-2.1-6.7-5l-3.7 2.8C3.5 21.4 7.4 24 12 24z"/>
+          </svg>
+          <span>Continue with Google OAuth 2.0 Redirect</span>
+        </a>
+
+        {% if enable_demo_auth %}
+        <div class="relative flex py-1 items-center">
+          <div class="flex-grow border-t border-slate-200"></div>
+          <span class="flex-shrink mx-3 text-[11px] text-slate-400 uppercase font-medium">Local Evaluation</span>
+          <div class="flex-grow border-t border-slate-200"></div>
+        </div>
+        <a href="/auth/demo-login"
+           class="w-full flex items-center justify-center gap-2 py-2 px-4 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-900 border border-emerald-300 font-semibold text-xs transition">
+          <span>Quick Sign-In with Demo Camper Profile</span>
+        </a>
+        {% endif %}
+
+        <div class="text-[11px] text-slate-500 bg-slate-50 p-3 rounded-lg border border-slate-200">
+          See <code>SETUP.md</code> for step-by-step instructions on configuring <code>GOOGLE_CLIENT_ID</code> and <code>GOOGLE_CLIENT_SECRET</code> in Google Cloud Console.
+        </div>
+      </div>
+
+      <!-- Map Settings Modal Content -->
+      <div id="modal-body-map" class="hidden p-5 space-y-4 text-xs sm:text-sm">
+        <div class="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-950 text-xs space-y-1">
+          <div class="font-bold">Current Map Engine: <span id="modal-map-engine-name">Detecting...</span></div>
+          <p class="text-[11px] text-emerald-800">
+            This app supports native <strong>Google Maps JavaScript API</strong> with MarkerClusterer, and automatically falls back to an interactive OpenStreetMap/Topo cluster map if <code>GOOGLE_MAPS_API_KEY</code> is not yet set in <code>.env</code>.
+          </p>
+        </div>
+
+        <div>
+          <label for="input-runtime-gmaps-key" class="block text-xs font-semibold text-slate-700 mb-1">
+            Test a Google Maps JavaScript API Key in Browser
+          </label>
+          <input id="input-runtime-gmaps-key" type="text"
+                 placeholder="AIzaSy..."
+                 class="w-full text-xs border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-emerald-600" />
+          <p class="text-[11px] text-slate-500 mt-1">
+            Saved in your browser's localStorage or configure permanently via <code>GOOGLE_MAPS_API_KEY</code> in <code>.env</code>.
+          </p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2">
+          <button id="btn-clear-gmaps-key" class="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-100">
+            Use Fallback Map
+          </button>
+          <button id="btn-apply-gmaps-key" class="px-4 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-xs font-semibold text-white">
+            Apply &amp; Reload Map
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- External Map Libraries -->
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+  <script src="https://unpkg.com/@googlemaps/markerclusterer/dist/index.min.js"></script>
+
+  <!-- Bootstrap Server Config -->
+  <script>
+    window.__INITIAL_CONFIG__ = {
+      googleMapsApiKey: {{ google_maps_api_key | tojson }},
+      googleMapsMapId: {{ google_maps_map_id | tojson }},
+      googleClientId: {{ google_client_id | tojson }},
+      googleOauthConfigured: {{ google_oauth_configured | tojson }},
+      enableDemoAuth: {{ enable_demo_auth | tojson }},
+      user: {{ user | tojson }}
+    };
+  </script>
+  <script src="/static/js/app.js"></script>
+</body>
+</html>
