@@ -1,125 +1,121 @@
 # Installation & Deployment Guide (`INSTALL.md`)
 
-This guide covers installing, running, testing, and managing the **Minnesota Park & Campsite Explorer** using **Docker & Docker Compose** (recommended) or a local Python virtual environment.
+This guide covers building, installing, and deploying the **Minnesota Park & Campsite Explorer** using:
+1. **Kubernetes & Helm** (exposing `https://camping.tpk.pw` via Ingress)
+2. **Docker & Docker Compose**
+3. **Local Python Virtual Environment**
 
 ---
 
-## Prerequisites
+## Option 1: Kubernetes & Helm Deployment (`https://camping.tpk.pw`)
 
-- **Docker Engine** (v20.10+) and **Docker Compose** (v2.0+ plugin `docker compose`)
-- *(Optional for non-Docker local development)* **Python 3.11+** and `pip`
-- Configured `.env` file (see [SETUP.md](SETUP.md) for Google Maps and Google IdP configuration)
+The Helm chart is located in [`helm/mncampsiteapp/`](helm/mncampsiteapp/) and includes:
+- `Deployment` ([`deployment.yaml`](helm/mncampsiteapp/templates/deployment.yaml)) with `/api/health` liveness/readiness probes and automatic rolling restarts on ConfigMap/Secret changes
+- `Service` ([`service.yaml`](helm/mncampsiteapp/templates/service.yaml)) exposing port `80` -> container port `8000`
+- `Ingress` ([`ingress.yaml`](helm/mncampsiteapp/templates/ingress.yaml)) pre-configured for `https://camping.tpk.pw` with `nginx` IngressClass and TLS (`camping-tpk-pw-tls`)
+- `Secret` ([`secret.yaml`](helm/mncampsiteapp/templates/secret.yaml)) & `ConfigMap` ([`configmap.yaml`](helm/mncampsiteapp/templates/configmap.yaml)) for all `.env` variables
+- `PersistentVolumeClaim` ([`pvc.yaml`](helm/mncampsiteapp/templates/pvc.yaml)) mounted at `/app/data` for SQLite persistence
+
+### Step 1: Build and Push the Docker Image to Your Container Registry
+```bash
+export REGISTRY_IMAGE="ghcr.io/your-org/mncampsiteapp"
+export IMAGE_TAG="1.0.0"
+
+docker build -t "${REGISTRY_IMAGE}:${IMAGE_TAG}" -t "${REGISTRY_IMAGE}:latest" .
+docker push "${REGISTRY_IMAGE}:${IMAGE_TAG}"
+docker push "${REGISTRY_IMAGE}:latest"
+```
+
+### Step 2: Deploy with Helm Passing Secrets via `--set`
+```bash
+helm upgrade --install mncampsiteapp ./helm/mncampsiteapp \
+  --namespace camping --create-namespace \
+  --set image.repository="ghcr.io/your-org/mncampsiteapp" \
+  --set image.tag="1.0.0" \
+  --set secrets.SESSION_SECRET_KEY="$(openssl rand -hex 32)" \
+  --set secrets.GOOGLE_MAPS_API_KEY="AIzaSyYourGoogleMapsKey" \
+  --set secrets.GOOGLE_CLIENT_ID="your-client-id.apps.googleusercontent.com" \
+  --set secrets.GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret" \
+  --set secrets.GOOGLE_SHEETS_API_KEY="" \
+  --set config.ENABLE_DEMO_AUTH="false"
+```
+
+### Alternative: Deploy Using a Custom `my-values.yaml` File
+If you prefer keeping your secrets in a local git-ignored file (`my-values.yaml`):
+
+```yaml
+image:
+  repository: ghcr.io/your-org/mncampsiteapp
+  tag: "1.0.0"
+
+config:
+  GOOGLE_REDIRECT_URI: "https://camping.tpk.pw/auth/callback"
+  ENABLE_DEMO_AUTH: "false"
+
+secrets:
+  SESSION_SECRET_KEY: "your-production-random-secret-key"
+  GOOGLE_MAPS_API_KEY: "AIzaSyYourGoogleMapsKey"
+  GOOGLE_CLIENT_ID: "your-client-id.apps.googleusercontent.com"
+  GOOGLE_CLIENT_SECRET: "GOCSPX-your-client-secret"
+  GOOGLE_SHEETS_API_KEY: ""
+```
+
+Then deploy with:
+```bash
+helm upgrade --install mncampsiteapp ./helm/mncampsiteapp \
+  --namespace camping --create-namespace \
+  -f my-values.yaml
+```
+
+### Step 3: Verify the Kubernetes Deployment
+```bash
+kubectl -n camping get pods,svc,ingress,pvc
+curl https://camping.tpk.pw/api/health
+```
 
 ---
 
-## Option 1: Run with Docker & Docker Compose (Recommended)
+## Option 2: Run with Docker & Docker Compose
 
 ### Step 1: Prepare the Environment File
-From the project root directory (`/home/builder/Workspaces/mncampsiteapp`):
-
 ```bash
 cp .env.example .env
 ```
 
-Edit `.env` if you have your `GOOGLE_MAPS_API_KEY`, `GOOGLE_CLIENT_ID`, and `GOOGLE_CLIENT_SECRET` ready (or leave the defaults to start immediately with the built-in interactive map fallback and demo IdP login).
-
 ### Step 2: Build and Start the Container
-Run Docker Compose in detached mode:
-
 ```bash
 docker compose up -d --build
 ```
 
 ### Step 3: Verify the Application is Running
-Check container status and health:
-
 ```bash
 docker compose ps
 curl http://localhost:8000/api/health
 ```
 
-Expected health check response:
-```json
-{
-  "status": "healthy",
-  "app": "Minnesota Park & Campsite Explorer",
-  "sheet_source": "google_sheets_live_csv",
-  "last_synced_at": "2026-10-14 22:45:00 UTC",
-  "total_campsites": 5584,
-  "total_parks": 109
-}
-```
-
-### Step 4: Access the Web Interface & API Docs
 - **Interactive Web Application:** [http://localhost:8000](http://localhost:8000)
 - **Interactive OpenAPI / Swagger Docs:** [http://localhost:8000/docs](http://localhost:8000/docs)
-- **ReDoc API Reference:** [http://localhost:8000/redoc](http://localhost:8000/redoc)
-
-### Managing the Docker Compose Stack
-
-- **View real-time application logs:**
-  ```bash
-  docker compose logs -f mncampsiteapp
-  ```
-- **Restart after editing `.env`:**
-  ```bash
-  docker compose up -d
-  ```
-- **Stop the containers (preserving saved favorites & notes in Docker volume `mn_campsite_data`):**
-  ```bash
-  docker compose down
-  ```
-- **Stop and remove persistent data volume:**
-  ```bash
-  docker compose down -v
-  ```
 
 ---
 
-## Option 2: Local Python Installation (Without Docker)
+## Option 3: Local Python Installation (Without Docker)
 
-If you want to run or develop the FastAPI app directly on the host machine:
-
-### Step 1: Create and Activate a Virtual Environment
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-```
-
-### Step 2: Install Dependencies
-```bash
 pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-### Step 3: Start the FastAPI Server with Uvicorn
-```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 ```
-
-Then open [http://localhost:8000](http://localhost:8000) in your browser.
 
 ---
 
 ## Running Automated Tests
-
-You can run the test suite either inside the Docker container or locally with `pytest`:
 
 ```bash
 # Inside the running Docker container:
 docker compose exec mncampsiteapp pytest -v
 
 # Or locally:
-pytest -v
+.venv/bin/pytest -v
 ```
-
----
-
-## Troubleshooting
-
-1. **Port `8000` is already in use:**
-   Change `APP_PORT=8080` in your `.env` file and run `docker compose up -d`. The app will be available at `http://localhost:8080`.
-2. **`redirect_uri_mismatch` error during Google Sign-In:**
-   Ensure `GOOGLE_REDIRECT_URI` in `.env` exactly matches the URI configured under **Authorized redirect URIs** in Google Cloud Console (default: `http://localhost:8000/auth/callback`).
-3. **Google Maps shows "For development purposes only" or switches to the fallback map:**
-   Ensure the **Maps JavaScript API** is enabled in your Google Cloud project and billing is linked, or use the **Map Settings** button in the top navigation bar to update or clear your browser test key.

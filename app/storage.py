@@ -7,13 +7,20 @@ from typing import Any, Dict, List
 
 from app.config import settings
 
+FALLBACK_LOCAL_DB = Path(__file__).resolve().parent.parent / "data" / "app.db"
+
 
 class UserStorage:
     """Manages SQLite persistence for authenticated user favorites and campsite notes."""
 
     def __init__(self, db_path: str | None = None) -> None:
-        self.db_path = db_path or settings.database_path
-        Path(self.db_path).parent.mkdir(parents=True, exist_ok=True)
+        candidate = db_path or settings.database_path
+        try:
+            Path(candidate).parent.mkdir(parents=True, exist_ok=True)
+            self.db_path = candidate
+        except PermissionError:
+            FALLBACK_LOCAL_DB.parent.mkdir(parents=True, exist_ok=True)
+            self.db_path = str(FALLBACK_LOCAL_DB)
         self._init_db()
 
     def _get_conn(self) -> sqlite3.Connection:

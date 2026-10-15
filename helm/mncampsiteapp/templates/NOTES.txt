@@ -1,0 +1,17 @@
+1. Minnesota Park & Campsite Explorer has been deployed!
+
+{{- if .Values.ingress.enabled }}
+2. Application URL(s):
+{{- range $host := .Values.ingress.hosts }}
+  {{- range .paths }}
+  https://{{ $host.host }}{{ .path }}
+  {{- end }}
+{{- end }}
+
+3. Ensure your Google Cloud Console OAuth 2.0 Client includes:
+   - Authorized JavaScript origin: https://camping.tpk.pw
+   - Authorized redirect URI:      {{ .Values.config.GOOGLE_REDIRECT_URI }}
+{{- else }}
+2. Port-forward to test locally:
+   kubectl --namespace {{ .Release.Namespace }} port-forward svc/{{ include "mncampsiteapp.fullname" . }} 8000:{{ .Values.service.port }}
+{{- end }}

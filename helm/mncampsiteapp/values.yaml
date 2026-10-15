@@ -1,0 +1,133 @@
+# ============================================================================
+# Default Helm values for mncampsiteapp (Minnesota Park & Campsite Explorer)
+# Exposes the app at https://camping.tpk.pw
+# ============================================================================
+
+replicaCount: 1
+
+image:
+  # Update repository to your Container Registry image path (e.g. ghcr.io/your-org/mncampsiteapp)
+  repository: ghcr.io/your-org/mncampsiteapp
+  pullPolicy: IfNotPresent
+  # Overrides the image tag whose default is the chart appVersion.
+  tag: "latest"
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# ----------------------------------------------------------------------------
+# Application Configuration (Non-secret environment variables from .env)
+# Stored in a Kubernetes ConfigMap and injected into the container
+# ----------------------------------------------------------------------------
+config:
+  APP_NAME: "Minnesota Park & Campsite Explorer"
+  APP_ENV: "production"
+  GOOGLE_SHEET_ID: "1CW-0euFLFz24nzcXNrTY24IoqTX9BCHLX5fdLjxAHgk"
+  GOOGLE_SHEET_GID: "459530859"
+  SHEET_CACHE_TTL_SECONDS: "1800"
+  GOOGLE_MAPS_MAP_ID: "DEMO_MAP_ID"
+  GOOGLE_REDIRECT_URI: "https://camping.tpk.pw/auth/callback"
+  ENABLE_DEMO_AUTH: "true"
+  DATABASE_PATH: "/app/data/app.db"
+
+# ----------------------------------------------------------------------------
+# Application Secrets (Sensitive environment variables from .env)
+# Stored in a Kubernetes Secret and injected into the container.
+# Pass via:
+#   --set secrets.GOOGLE_MAPS_API_KEY="AIza..." \
+#   --set secrets.GOOGLE_CLIENT_ID="...apps.googleusercontent.com" \
+#   --set secrets.GOOGLE_CLIENT_SECRET="GOCSPX-..." \
+#   --set secrets.SESSION_SECRET_KEY="$(openssl rand -hex 32)"
+# ----------------------------------------------------------------------------
+secrets:
+  # Optional: reference an pre-existing Kubernetes Secret instead of creating one
+  existingSecret: ""
+  SESSION_SECRET_KEY: "mn-campsite-dev-secret-key-change-in-prod"
+  GOOGLE_SHEETS_API_KEY: ""
+  GOOGLE_MAPS_API_KEY: ""
+  GOOGLE_CLIENT_ID: ""
+  GOOGLE_CLIENT_SECRET: ""
+
+# ----------------------------------------------------------------------------
+# Kubernetes Service Configuration
+# ----------------------------------------------------------------------------
+service:
+  type: ClusterIP
+  port: 80
+  targetPort: 8000
+
+# ----------------------------------------------------------------------------
+# Kubernetes Ingress Configuration (https://camping.tpk.pw)
+# ----------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+  hosts:
+    - host: camping.tpk.pw
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: camping-tpk-pw-tls
+      hosts:
+        - camping.tpk.pw
+
+# ----------------------------------------------------------------------------
+# Persistent Storage for SQLite (/app/data/app.db)
+# Corresponds to the mn_campsite_data volume in docker-compose.yml
+# ----------------------------------------------------------------------------
+persistence:
+  enabled: true
+  existingClaim: ""
+  storageClass: ""
+  accessMode: ReadWriteOnce
+  size: 1Gi
+  mountPath: /app/data
+
+# ----------------------------------------------------------------------------
+# Pod Security, Probes, and Resource Limits
+# ----------------------------------------------------------------------------
+podAnnotations: {}
+
+podSecurityContext:
+  fsGroup: 1000
+
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+
+livenessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 15
+  periodSeconds: 30
+  timeoutSeconds: 10
+  failureThreshold: 3
+
+readinessProbe:
+  httpGet:
+    path: /api/health
+    port: http
+  initialDelaySeconds: 10
+  periodSeconds: 15
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: 500m
+    memory: 512Mi
+
+nodeSelector: {}
+tolerations: []
+affinity: {}

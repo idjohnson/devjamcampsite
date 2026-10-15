@@ -1,0 +1,16 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "mncampsiteapp.fullname" . }}-config
+  labels:
+    {{- include "mncampsiteapp.labels" . | nindent 4 }}
+data:
+  APP_NAME: {{ .Values.config.APP_NAME | quote }}
+  APP_ENV: {{ .Values.config.APP_ENV | quote }}
+  GOOGLE_SHEET_ID: {{ .Values.config.GOOGLE_SHEET_ID | quote }}
+  GOOGLE_SHEET_GID: {{ .Values.config.GOOGLE_SHEET_GID | quote }}
+  SHEET_CACHE_TTL_SECONDS: {{ .Values.config.SHEET_CACHE_TTL_SECONDS | quote }}
+  GOOGLE_MAPS_MAP_ID: {{ .Values.config.GOOGLE_MAPS_MAP_ID | quote }}
+  GOOGLE_REDIRECT_URI: {{ .Values.config.GOOGLE_REDIRECT_URI | quote }}
+  ENABLE_DEMO_AUTH: {{ .Values.config.ENABLE_DEMO_AUTH | quote }}
+  DATABASE_PATH: {{ .Values.config.DATABASE_PATH | quote }}

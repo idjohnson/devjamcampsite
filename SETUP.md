@@ -1,6 +1,6 @@
 # Setup Guide (`SETUP.md`)
 
-This guide walks you through configuring the Google Cloud credentials, Google Maps JavaScript API, Federated Google Identity Provider (OAuth 2.0 / OIDC), and Google Sheets data connection for the **Minnesota Park & Campsite Explorer**.
+This guide walks you through configuring the Google Cloud credentials, Google Maps JavaScript API, Federated Google Identity Provider (OAuth 2.0 / OIDC), and Google Sheets data connection for the **Minnesota Park & Campsite Explorer** (for both `https://camping.tpk.pw` on Kubernetes/Helm and `http://localhost:8000` on Docker Compose).
 
 ---
 
@@ -9,13 +9,15 @@ This guide walks you through configuring the Google Cloud credentials, Google Ma
 ```mermaid
 flowchart LR
     User["Camper Browser"]
-    FastAPI["FastAPI App (Docker :8000)"]
+    Ingress["Kubernetes Ingress (https://camping.tpk.pw)"]
+    FastAPI["FastAPI App Pod (:8000)"]
     GSheets["Google Sheets (MN Park Information)"]
     GMaps["Google Maps JS API"]
     GIdP["Google IdP (OAuth 2.0 / OIDC)"]
-    SQLite[("SQLite Volume (/app/data/app.db)")]
+    SQLite[("PVC (/app/data/app.db)")]
 
-    User <-->|"Interactive Map & Filters"| FastAPI
+    User <-->|"HTTPS"| Ingress
+    Ingress <-->|"HTTP :80 -> :8000"| FastAPI
     User <-->|"Map Tiles & MarkerClusterer"| GMaps
     User <-->|"Federated Sign-In"| GIdP
     FastAPI <-->|"Token Exchange & Verification"| GIdP
@@ -44,16 +46,13 @@ The application plots all **5,584 Minnesota State Park, State Forest, Recreation
 2. Search for **Maps JavaScript API** and click **Enable**.
 3. Navigate to **APIs & Services > Credentials**.
 4. Click **+ Create Credentials > API key**.
-5. Copy the generated key (`AIzaSy...`) and recommend restricting it:
+5. Copy the generated key (`AIzaSy...`) and restrict it:
    - Under **Application restrictions**, select **HTTP referrers (web sites)** and add:
+     - `https://camping.tpk.pw/*`
      - `http://localhost:8000/*`
      - `http://127.0.0.1:8000/*`
-     - Your production domain (if deploying publicly)
    - Under **API restrictions**, select **Restrict key** and choose **Maps JavaScript API**.
-6. Set the key in your `.env` file:
-   ```env
-   GOOGLE_MAPS_API_KEY="AIzaSyYourGoogleMapsApiKeyHere"
-   ```
+6. Set `GOOGLE_MAPS_API_KEY` in your `.env` (for Docker Compose) or pass `--set secrets.GOOGLE_MAPS_API_KEY="AIzaSy..."` to Helm.
 
 ---
 
@@ -74,6 +73,7 @@ Signing in unlocks personal user features stored against your Google `sub` ident
 3. Fill in the required fields:
    - **App name:** `Minnesota Park & Campsite Explorer`
    - **User support email:** Your email address
+   - **Authorized domains:** `tpk.pw`
    - **Developer contact information:** Your email address
 4. Click **Save and Continue** through Scopes (`openid`, `.../auth/userinfo.email`, `.../auth/userinfo.profile`) and add your Google account under **Test users** if the app is in Testing mode.
 
@@ -83,17 +83,14 @@ Signing in unlocks personal user features stored against your Google `sub` ident
 3. Select **Application type:** `Web application`.
 4. Name it `MN Campsite Explorer Web Client`.
 5. Under **Authorized JavaScript origins**, add:
+   - `https://camping.tpk.pw`
    - `http://localhost:8000`
 6. Under **Authorized redirect URIs**, add:
+   - `https://camping.tpk.pw/auth/callback`
    - `http://localhost:8000/auth/callback`
-7. Click **Create** and copy the **Client ID** and **Client Secret** into your `.env` file:
-   ```env
-   GOOGLE_CLIENT_ID="1234567890-abcdefg.apps.googleusercontent.com"
-   GOOGLE_CLIENT_SECRET="GOCSPX-your-client-secret"
-   GOOGLE_REDIRECT_URI="http://localhost:8000/auth/callback"
-   ```
-
-> **Local Evaluation Mode (`ENABLE_DEMO_AUTH`):** By default, `ENABLE_DEMO_AUTH=true` in `.env.example`, which allows you to test authenticated features (Favorites, Trip Notes, and Sheet Sync) locally with a one-click Demo Camper profile before creating Google OAuth credentials. Set `ENABLE_DEMO_AUTH=false` in production.
+7. Click **Create** and copy the **Client ID** and **Client Secret**:
+   - **For Helm (`https://camping.tpk.pw`):** `config.GOOGLE_REDIRECT_URI` is already defaulted to `https://camping.tpk.pw/auth/callback` in [values.yaml](helm/mncampsiteapp/values.yaml). Pass `secrets.GOOGLE_CLIENT_ID` and `secrets.GOOGLE_CLIENT_SECRET` via Helm values.
+   - **For Docker Compose (`http://localhost:8000`):** Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REDIRECT_URI` in `.env`.
 
 ---
 
@@ -105,31 +102,25 @@ By default, the app is pre-configured to pull from the Minnesota Park Informatio
 - **`GOOGLE_SHEET_GID`:** `459530859`
 
 ### How Data Sync Works (3-Tier Resilience):
-1. **Google Sheets API v4 (Optional):** If `GOOGLE_SHEETS_API_KEY` is provided in `.env` (with the **Google Sheets API** enabled in Google Cloud Console), the backend queries `https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_SHEET_ID}/values/...`.
+1. **Google Sheets API v4 (Optional):** If `GOOGLE_SHEETS_API_KEY` is provided, the backend queries `https://sheets.googleapis.com/v4/spreadsheets/{GOOGLE_SHEET_ID}/values/...`.
 2. **Direct Google Sheets Live CSV Export (Default):** If `GOOGLE_SHEETS_API_KEY` is empty, the backend fetches directly from `https://docs.google.com/spreadsheets/d/1CW-0euFLFz24nzcXNrTY24IoqTX9BCHLX5fdLjxAHgk/export?format=csv&gid=459530859` and caches the parsed dataset in memory for `SHEET_CACHE_TTL_SECONDS` (default: 30 minutes).
 3. **Bundled Local Snapshot Fallback:** If the container is run in an offline environment without internet access, it automatically falls back to `app/data/mn_campsites_fallback.csv` (all 5,584 campsites across 109 parks).
 
 ---
 
-## 5. Complete `.env` Configuration Reference
+## 5. Configuration & Secrets Reference (`.env` & Helm `values.yaml`)
 
-Create your `.env` file from the template:
-
-```bash
-cp .env.example .env
-```
-
-| Variable | Default | Description |
-| :--- | :--- | :--- |
-| `APP_PORT` | `8000` | Host port mapped to the FastAPI container |
-| `SESSION_SECRET_KEY` | *(required in prod)* | Secret string used to sign session cookies (generate with `openssl rand -hex 32`) |
-| `GOOGLE_SHEET_ID` | `1CW-0euFLFz24nzcXNrTY24IoqTX9BCHLX5fdLjxAHgk` | Google Spreadsheet document ID |
-| `GOOGLE_SHEET_GID` | `459530859` | Worksheet tab GID for Minnesota Park Information |
-| `GOOGLE_SHEETS_API_KEY` | `""` | Optional Google Sheets API v4 key |
-| `SHEET_CACHE_TTL_SECONDS` | `1800` | Seconds to cache sheet data in memory before refreshing |
-| `GOOGLE_MAPS_API_KEY` | `""` | Google Maps JavaScript API key |
-| `GOOGLE_CLIENT_ID` | `""` | OAuth 2.0 Client ID for Federated Google IdP login |
-| `GOOGLE_CLIENT_SECRET` | `""` | OAuth 2.0 Client Secret for Federated Google IdP login |
-| `GOOGLE_REDIRECT_URI` | `http://localhost:8000/auth/callback` | OAuth 2.0 callback URL |
-| `ENABLE_DEMO_AUTH` | `true` | Enables local demo login when Google OAuth is not yet configured |
-| `DATABASE_PATH` | `/app/data/app.db` | Path to SQLite database for user favorites and notes |
+| Environment Variable | Helm Value Path | Default (Helm) | Description |
+| :--- | :--- | :--- | :--- |
+| `SESSION_SECRET_KEY` | `secrets.SESSION_SECRET_KEY` | `mn-campsite-dev-...` | Secret string used to sign session cookies (`openssl rand -hex 32`) |
+| `GOOGLE_MAPS_API_KEY` | `secrets.GOOGLE_MAPS_API_KEY` | `""` | Google Maps JavaScript API key |
+| `GOOGLE_CLIENT_ID` | `secrets.GOOGLE_CLIENT_ID` | `""` | OAuth 2.0 Client ID for Federated Google IdP login |
+| `GOOGLE_CLIENT_SECRET` | `secrets.GOOGLE_CLIENT_SECRET` | `""` | OAuth 2.0 Client Secret for Federated Google IdP login |
+| `GOOGLE_SHEETS_API_KEY` | `secrets.GOOGLE_SHEETS_API_KEY` | `""` | Optional Google Sheets API v4 key |
+| `GOOGLE_REDIRECT_URI` | `config.GOOGLE_REDIRECT_URI` | `https://camping.tpk.pw/auth/callback` | OAuth 2.0 callback URL |
+| `GOOGLE_SHEET_ID` | `config.GOOGLE_SHEET_ID` | `1CW-0euFLFz24nzcXNrTY24IoqTX9BCHLX5fdLjxAHgk` | Google Spreadsheet document ID |
+| `GOOGLE_SHEET_GID` | `config.GOOGLE_SHEET_GID` | `459530859` | Worksheet tab GID for Minnesota Park Information |
+| `SHEET_CACHE_TTL_SECONDS` | `config.SHEET_CACHE_TTL_SECONDS` | `"1800"` | Seconds to cache sheet data in memory before refreshing |
+| `GOOGLE_MAPS_MAP_ID` | `config.GOOGLE_MAPS_MAP_ID` | `"DEMO_MAP_ID"` | Google Maps Map ID |
+| `ENABLE_DEMO_AUTH` | `config.ENABLE_DEMO_AUTH` | `"true"` | Enables local demo login when Google OAuth is not yet configured |
+| `DATABASE_PATH` | `config.DATABASE_PATH` | `"/app/data/app.db"` | Path to SQLite database inside the container |
